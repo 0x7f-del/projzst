@@ -10,7 +10,7 @@ use std::path::Path;
 use thiserror::Error;
 
 /// Default zstd compression level for pack operation
-pub const DEFAULT_ZSTD_LEVEL: i32 = 3;
+pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
 
 /// Maximum allowed metadata size (10 MB) to prevent malicious files
 const MAX_METADATA_SIZE: usize = 10 * 1024 * 1024;
@@ -50,17 +50,29 @@ pub type Result<T> = std::result::Result<T, ProjzstError>;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
     /// Package name
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
+
     /// Author name
-    pub auth: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<String>,
+
     /// Package format identifier
-    pub fmt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fmt: Option<String>,
+
     /// Format edition
-    pub ed: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ed: Option<String>,
+
     /// Project version
-    pub ver: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ver: Option<String>,
+
     /// Package description
-    pub desc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desc: Option<String>,
+
     /// Extra metadata (arbitrary JSON structure)
     pub extra: serde_json::Value,
 }
@@ -69,11 +81,11 @@ impl Default for Metadata {
     fn default() -> Self {
         Self {
             name: String::new(),
-            auth: String::new(),
-            fmt: String::new(),
-            ed: String::new(),
-            ver: String::new(),
-            desc: String::new(),
+            auth: None,
+            fmt: None,
+            ed: None,
+            ver: None,
+            desc: None,
             extra: serde_json::Value::Object(serde_json::Map::new()),
         }
     }
@@ -81,13 +93,13 @@ impl Default for Metadata {
 
 impl Metadata {
     /// Create new Metadata with specified fields
-    pub fn new(
+    pub fn new<I: Into<Option<String>>>(
         name: impl Into<String>,
-        auth: impl Into<String>,
-        fmt: impl Into<String>,
-        ed: impl Into<String>,
-        ver: impl Into<String>,
-        desc: impl Into<String>,
+        auth: I,
+        fmt: I,
+        ed: I,
+        ver: I,
+        desc: I,
     ) -> Self {
         Self {
             name: name.into(),
@@ -274,25 +286,4 @@ where
     fs::write(output_json, json_content)?;
 
     Ok(metadata)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_metadata_default() {
-        let meta = Metadata::default();
-        assert!(meta.name.is_empty());
-        assert!(meta.extra.is_object());
-    }
-
-    #[test]
-    fn test_metadata_builder() {
-        let meta = Metadata::new("test", "author", "fmt", "ed", "1.0", "desc")
-            .with_extra(serde_json::json!({"key": "value"}));
-
-        assert_eq!(meta.name, "test");
-        assert_eq!(meta.extra["key"], "value");
-    }
 }

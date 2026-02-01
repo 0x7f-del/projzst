@@ -26,7 +26,7 @@ A command-line tool for packing and unpacking `.pjz` files with MessagePack meta
 ### From Source
 
 ```bash
-git clone https://github.com/0x7fdel/projzst.git
+git clone https://github.com/0x7f-del/projzst.git
 cd projzst
 cargo build --release
 

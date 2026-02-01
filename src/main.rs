@@ -20,41 +20,43 @@ enum Commands {
     /// Pack a directory into a .pjz file with metadata
     Pack {
         /// Source directory to pack
-        source: PathBuf,
+        #[arg(short, long)]
+        input: PathBuf,
 
         /// Package name
-        #[arg(long)]
+        #[arg(short, long)]
         name: String,
 
         /// Author name
-        #[arg(long)]
-        auth: String,
+        #[arg(short, long)]
+        auth: Option<String>,
 
         /// Package format identifier
-        #[arg(long)]
-        fmt: String,
+        #[arg(short, long)]
+        fmt: Option<String>,
 
         /// Format edition
-        #[arg(long)]
-        ed: String,
+        #[arg(short, long)]
+        ed: Option<String>,
 
         /// Project version
-        #[arg(long)]
-        ver: String,
+        #[arg(short, long)]
+        ver: Option<String>,
 
         /// Package description
-        #[arg(long)]
-        desc: String,
+        #[arg(short, long)]
+        desc: Option<String>,
 
         /// Path to extra metadata JSON file
-        #[arg(long)]
+        #[arg(short = 'x', long)]
         extra: Option<PathBuf>,
 
         /// Zstd compression level (1-22)
-        #[arg(long, default_value_t = DEFAULT_ZSTD_LEVEL)]
+        #[arg(short, long, default_value_t = DEFAULT_ZSTD_LEVEL)]
         level: i32,
 
         /// Output .pjz file path
+        #[arg(short, long)]
         output: PathBuf,
     },
 
@@ -82,7 +84,7 @@ fn run() -> Result<(), ProjzstError> {
 
     match cli.command {
         Commands::Pack {
-            source,
+            input,
             name,
             auth,
             fmt,
@@ -94,14 +96,14 @@ fn run() -> Result<(), ProjzstError> {
             output,
         } => {
             let metadata = Metadata::new(name, auth, fmt, ed, ver, desc);
-            pack(&source, &output, metadata, extra.as_ref(), level)?;
+            pack(&input, &output, metadata, extra.as_ref(), level)?;
             println!("Successfully packed: {}", output.display());
         }
 
         Commands::Unpack { input, output } => {
             let metadata = unpack(&input, &output)?;
             println!("Successfully unpacked: {}", output.display());
-            println!("Package: {} v{}", metadata.name, metadata.ver);
+            println!("Package: {} v{}", metadata.name, metadata.ver.unwrap_or_default());
         }
 
         Commands::Info { input, output } => {
@@ -109,10 +111,21 @@ fn run() -> Result<(), ProjzstError> {
             println!("Metadata saved to: {}", output.display());
             println!("---");
             println!("Name: {}", metadata.name);
-            println!("Author: {}", metadata.auth);
-            println!("Version: {}", metadata.ver);
-            println!("Format: {} ({})", metadata.fmt, metadata.ed);
-            println!("Description: {}", metadata.desc);
+            if let Some(author) = metadata.auth {
+                println!("Author: {}", author);
+            }
+            if let Some(version) = metadata.ver {
+                println!("Version: {}", version);
+            }
+            if let Some(format) = metadata.fmt {
+                match metadata.ed {
+                    Some(edition) => println!("Format: {} ({})", format, edition),
+                    None => println!("Format: {}", format),
+                }
+            }
+            if let Some(description) = metadata.desc {
+                println!("Description: {}", description);
+            }
         }
     }
 

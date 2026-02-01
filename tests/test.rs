@@ -22,11 +22,11 @@ fn create_test_directory(base: &std::path::Path) -> std::path::PathBuf {
 fn create_test_metadata() -> Metadata {
     Metadata::new(
         "test-project",
-        "Test Author",
-        "test-format",
-        "2024",
-        "1.0.0",
-        "A test project description",
+        "Test Author".to_string(),
+        "test-format".into(),
+        "2024".into(),
+        "1.0.0".into(),
+        "A test project description".into(),
     )
 }
 
@@ -115,12 +115,12 @@ fn test_info_extracts_metadata_to_json() {
     let archive = temp.path().join("test.pjz");
     let json_output = temp.path().join("info/metadata.json");
 
-    let metadata = Metadata::new("info-test", "Author", "fmt", "ed", "2.0.0", "desc");
+    let metadata = Metadata::new("info-test", None, None, None, Some("2.0.0".into()), None);
     pack(&source, &archive, metadata, None::<&str>, 3).unwrap();
 
     let result = info(&archive, &json_output).unwrap();
     assert_eq!(result.name, "info-test");
-    assert_eq!(result.ver, "2.0.0");
+    assert_eq!(result.ver, Some("2.0.0".into()));
 
     assert!(json_output.exists());
     let content = fs::read_to_string(&json_output).unwrap();
@@ -225,11 +225,11 @@ fn test_metadata_with_unicode() {
 
     let metadata = Metadata::new(
         "项目名称",
-        "作者名 🚀",
-        "フォーマット",
-        "版本2024",
-        "1.0.0-β",
-        "Description with émojis 🎉 and spëcial çharacters",
+        "作者名 🚀".to_string(),
+        "フォーマット".into(),
+        "版本2024".into(),
+        "1.0.0-β".into(),
+        "Description with émojis 🎉 and spëcial çharacters".into(),
     );
 
     pack(&source, &archive, metadata.clone(), None::<&str>, 3).unwrap();
