@@ -103,14 +103,16 @@ fn run() -> Result<(), ProjzstError> {
         Commands::Unpack { input, output } => {
             let metadata = unpack(&input, &output)?;
             println!("Successfully unpacked: {}", output.display());
-            println!("Package: {} v{}", metadata.name, metadata.ver.unwrap_or_default());
+            println!("Package: {} v{}", metadata.name.unwrap_or_default(), metadata.ver.unwrap_or_default());
         }
 
         Commands::Info { input, output } => {
             let metadata = info(&input, &output)?;
             println!("Metadata saved to: {}", output.display());
             println!("---");
-            println!("Name: {}", metadata.name);
+            if let Some(name) = metadata.name {
+            println!("Name: {}", name);
+            }
             if let Some(author) = metadata.auth {
                 println!("Author: {}", author);
             }

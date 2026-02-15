@@ -9,6 +9,9 @@ use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
+mod string_utils;
+use crate::string_utils::IntoOpStr;
+
 /// Default zstd compression level for pack operation
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
 
@@ -50,8 +53,8 @@ pub type Result<T> = std::result::Result<T, ProjzstError>;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
     /// Package name
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 
     /// Author name
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -80,7 +83,7 @@ pub struct Metadata {
 impl Default for Metadata {
     fn default() -> Self {
         Self {
-            name: String::new(),
+            name: None,
             auth: None,
             fmt: None,
             ed: None,
@@ -93,21 +96,29 @@ impl Default for Metadata {
 
 impl Metadata {
     /// Create new Metadata with specified fields
-    pub fn new<I: Into<Option<String>>>(
-        name: impl Into<String>,
-        auth: I,
-        fmt: I,
-        ed: I,
-        ver: I,
-        desc: I,
-    ) -> Self {
+    pub fn new<I1, I2, I3, I4, I5, I6>(
+        name: I1,
+        auth: I2,
+        fmt: I3,
+        ed: I4,
+        ver: I5,
+        desc: I6,
+    )-> Self 
+    where
+        I1: IntoOpStr,
+        I2: IntoOpStr,
+        I3: IntoOpStr,
+        I4: IntoOpStr,
+        I5: IntoOpStr,
+        I6: IntoOpStr,
+    {
         Self {
-            name: name.into(),
-            auth: auth.into(),
-            fmt: fmt.into(),
-            ed: ed.into(),
-            ver: ver.into(),
-            desc: desc.into(),
+            name: name.into_op_str(),
+            auth: auth.into_op_str(),
+            fmt: fmt.into_op_str(),
+            ed: ed.into_op_str(),
+            ver: ver.into_op_str(),
+            desc: desc.into_op_str(),
             extra: serde_json::Value::Object(serde_json::Map::new()),
         }
     }

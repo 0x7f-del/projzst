@@ -22,10 +22,10 @@ fn create_test_directory(base: &std::path::Path) -> std::path::PathBuf {
 fn create_test_metadata() -> Metadata {
     Metadata::new(
         "test-project",
-        "Test Author".to_string(),
+        "Test Author",
         "test-format".into(),
-        "2024".into(),
-        "1.0.0".into(),
+        "2024",
+        "1.0.0",
         "A test project description".into(),
     )
 }
@@ -225,9 +225,9 @@ fn test_metadata_with_unicode() {
 
     let metadata = Metadata::new(
         "项目名称",
-        "作者名 🚀".to_string(),
+        "作者名 🚀",
         "フォーマット".into(),
-        "版本2024".into(),
+        "版本2024",
         "1.0.0-β".into(),
         "Description with émojis 🎉 and spëcial çharacters".into(),
     );
