@@ -9,8 +9,8 @@ use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
-mod into_str;
-use crate::into_str::IntoOpStr;
+mod string_utils;
+use crate::string_utils::IntoOpStr;
 
 /// Default zstd compression level for pack operation
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
