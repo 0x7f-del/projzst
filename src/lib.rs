@@ -9,8 +9,8 @@ use std::io::{BufReader, BufWriter, Cursor, Read, Write};
 use std::path::Path;
 use thiserror::Error;
 
-mod string_utils;
-use crate::string_utils::IntoOpStr;
+mod into_str;
+use crate::into_str::IntoOpStr;
 
 /// Default zstd compression level for pack operation
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
@@ -53,27 +53,27 @@ pub type Result<T> = std::result::Result<T, ProjzstError>;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Metadata {
     /// Package name
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub name: Option<String>,
 
     /// Author name
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub auth: Option<String>,
 
     /// Package format identifier
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub fmt: Option<String>,
 
     /// Format edition
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub ed: Option<String>,
 
     /// Project version
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub ver: Option<String>,
 
     /// Package description
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub desc: Option<String>,
 
     /// Extra metadata (arbitrary JSON structure)
