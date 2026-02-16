@@ -44,19 +44,21 @@ cargo run -- <command> [options]
 ### Pack a Directory
 
 ```bash
-projzst pack ./my-project \
+projzst pack \
+    --input ./my-project \
     --name my-project \
     --auth "Your Name" \
     --fmt package-format \
     --ed 2024 \
     --ver 1.0.0 \
     --desc "Project description" \
-    output.pjz
+    --output output.pjz
 ```
 
 With extra metadata:
 ```bash
-projzst pack ./my-project \
+projzst pack \
+    --input ./my-project \
     --name my-project \
     --auth "Your Name" \
     --fmt package-format \
@@ -65,7 +67,27 @@ projzst pack ./my-project \
     --desc "Project description" \
     --extra extra-metadata.json \
     --level 5 \
-    output.pjz
+    --output output.pjz
+```
+
+Using short options:
+```bash
+projzst pack -i ./my-project \
+    -n my-project \
+    -a "Your Name" \
+    -f package-format \
+    -e 2024 \
+    -v 1.0.0 \
+    -d "Project description" \
+    -o output.pjz
+```
+
+Omit some options:
+```bash
+projzst pack -i ./my-project \
+    -n my-project \
+    -v 1.0.0 \
+    -o output.pjz
 ```
 
 ### Unpack an Archive
@@ -153,5 +175,6 @@ cargo test test_pack_and_unpack_full_cycle
 ```
 
 ## License
+
 
 MIT
