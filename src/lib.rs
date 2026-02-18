@@ -13,7 +13,7 @@ use std::path::Path;
 use thiserror::Error;
 
 mod string_utils;
-use crate::string_utils::IntoOpStr;
+pub use crate::string_utils::IntoOpStr;
 
 /// Default zstd compression level for pack operation
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;

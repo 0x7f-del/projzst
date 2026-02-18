@@ -102,6 +102,6 @@ impl IntoOpStr for Option<String> {
 /// let result = _convert("example");
 /// assert_eq!(result, Some("example".to_string()));
 /// ```
-pub fn _convert<T: IntoOpStr>(value: T) -> Option<String> {
+pub fn convert<T: IntoOpStr>(value: T) -> Option<String> {
     value.into_op_str()
 }
