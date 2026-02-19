@@ -7,13 +7,14 @@
 //! followed by a standard ZStd compressed frame containing the tar archive.
 
 use serde::{Deserialize, Serialize};
+use serde_ignored;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use thiserror::Error;
 
 mod string_utils;
-use crate::string_utils::IntoOpStr;
+pub use crate::string_utils::IntoOpStr;
 
 /// Default zstd compression level for pack operation
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
@@ -62,10 +63,49 @@ pub enum ProjzstError {
     /// File header is invalid (missing magic numbers, corrupt format, etc.)
     #[error("Failed to read file header or invalid file format")]
     InvalidFileHeader,
+
+    /// Unknown fields detected in metadata when ignore_unknown is false
+    #[error("Unknown fields detected in metadata: {0}")]
+    UnknownFields(String),
+
+    /// Invalid ignore_unknown parameter value
+    #[error("Invalid ignore_unknown parameter: must be 'on', 'off', or 'export'")]
+    InvalidIgnoreUnknownParam,
 }
 
 /// Result type alias for projzst operations
 pub type Result<T> = std::result::Result<T, ProjzstError>;
+
+/// Ignore unknown fields behavior
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IgnoreUnknown {
+    /// Silently ignore unknown fields (default)
+    On,
+    /// Error on unknown fields
+    Off,
+    /// Collect unknown fields and export them to extra.ignored
+    Export,
+}
+
+impl IgnoreUnknown {
+    /// Create from string parameter
+    pub fn from_str<I: IntoOpStr>(s: I) -> Result<Self> {
+        let a = s.into_op_str().unwrap_or_default();
+        let s :&str = a.as_ref();
+        match s.to_lowercase().as_str() {
+            "on" | "true" | "yes" | "1" => Ok(IgnoreUnknown::On),
+            "off" | "false" | "no" | "0" => Ok(IgnoreUnknown::Off),
+            "export" | "extra" => Ok(IgnoreUnknown::Export),
+            _ => Err(ProjzstError::InvalidIgnoreUnknownParam),
+        }
+    }
+}
+
+impl Default for IgnoreUnknown {
+    fn default() -> Self {
+        IgnoreUnknown::On
+    }
+}
 
 /// Metadata structure stored in .pjz file header
 /// All fields are optional except extra which defaults to empty object
@@ -96,6 +136,8 @@ pub struct Metadata {
     pub desc: Option<String>,
 
     /// Extra metadata (arbitrary JSON structure)
+    /// When ignore_unknown = Export, unknown fields are stored in extra.ignored
+    #[serde(default)]
     pub extra: serde_json::Value,
 }
 
@@ -148,6 +190,36 @@ impl Metadata {
     pub fn with_extra(mut self, extra: serde_json::Value) -> Self {
         self.extra = extra;
         self
+    }
+
+    /// Merge unknown fields into extra.ignored
+    /// This is used when ignore_unknown = Export
+    pub fn merge_unknown_fields(&mut self, unknown: serde_json::Value) {
+        if let serde_json::Value::Object(unknown_map) = unknown {
+            // Ensure extra is an object
+            if !self.extra.is_object() {
+                self.extra = serde_json::Value::Object(serde_json::Map::new());
+            }
+            
+            if let serde_json::Value::Object(extra_map) = &mut self.extra {
+                // Create or get the "ignored" field
+                let ignored = extra_map
+                    .entry("ignored".to_string())
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                
+                // Ensure ignored is an object
+                if !ignored.is_object() {
+                    *ignored = serde_json::Value::Object(serde_json::Map::new());
+                }
+                
+                // Merge unknown fields into ignored
+                if let serde_json::Value::Object(ignored_map) = ignored {
+                    for (key, value) in unknown_map {
+                        ignored_map.insert(key, value);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -223,9 +295,9 @@ where
     Ok(())
 }
 
-/// Internal helper: read metadata from a file
+/// Internal helper: read metadata from a file with ignore_unknown parameter
 /// Returns metadata and leaves file cursor at the start of the first ZStd frame
-fn read_metadata_from_file(file: &mut File) -> Result<Metadata> {
+fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Result<Metadata> {
     let mut metadata_bytes = Vec::new();
 
     loop {
@@ -275,22 +347,95 @@ fn read_metadata_from_file(file: &mut File) -> Result<Metadata> {
         return Err(ProjzstError::InvalidFileHeader);
     }
 
-    // Deserialize MessagePack to Metadata struct
-    let metadata: Metadata = rmp_serde::from_slice(&metadata_bytes)?;
-    Ok(metadata)
+    // Deserialize MessagePack to Metadata struct with ignore_unknown handling
+    match ignore_unknown {
+        IgnoreUnknown::On => {
+            // Silently ignore unknown fields
+            let metadata: Metadata = rmp_serde::from_slice(&metadata_bytes)?;
+            Ok(metadata)
+        }
+        IgnoreUnknown::Off => {
+            // Check for unknown fields using serde_ignored
+            let mut deserializer = rmp_serde::Deserializer::new(&metadata_bytes[..]);
+            let mut unknown_fields = Vec::new();
+            
+            let metadata: Metadata = serde_ignored::deserialize(&mut deserializer, |path| {
+                unknown_fields.push(path.to_string());
+            })?;
+            
+            if !unknown_fields.is_empty() {
+                return Err(ProjzstError::UnknownFields(unknown_fields.join(", ")));
+            }
+            
+            Ok(metadata)
+        }
+        IgnoreUnknown::Export => {
+            // Deserialize into a generic Value first
+            let full_value: serde_json::Value = rmp_serde::from_slice(&metadata_bytes)?;
+            
+            if let serde_json::Value::Object(map) = full_value {
+                // Known fields we want to extract
+                let known_fields = [
+                    "name", "auth", "fmt", "ed", "ver", "desc", "extra"
+                ];
+                
+                // Build a map of known fields
+                let mut known_map = serde_json::Map::new();
+                let mut unknown_map = serde_json::Map::new();
+                
+                for (key, value) in map {
+                    if known_fields.contains(&key.as_str()) {
+                        known_map.insert(key, value);
+                    } else {
+                        unknown_map.insert(key, value);
+                    }
+                }
+                
+                // Deserialize known fields into Metadata
+                let known_value = serde_json::Value::Object(known_map);
+                let mut metadata: Metadata = serde_json::from_value(known_value)?;
+                
+                // Merge unknown fields into extra.ignored
+                if !unknown_map.is_empty() {
+                    metadata.merge_unknown_fields(serde_json::Value::Object(unknown_map));
+                }
+                
+                Ok(metadata)
+            } else {
+                // Not an object - just try normal deserialization
+                Ok(rmp_serde::from_slice(&metadata_bytes)?)
+            }
+        }
+    }
 }
 
 /// Read only metadata from a .pjz file without extracting content
 /// Returns the metadata found in the skippable frames
-pub fn read_metadata<P: AsRef<Path>>(input_file: P) -> Result<Metadata> {
+/// 
+/// # Arguments
+/// * `input_file` - Path to the .pjz file
+/// * `ignore_unknown` - How to handle unknown fields in metadata
+pub fn read_metadata<P: AsRef<Path>>(
+    input_file: P, 
+    ignore_unknown: IgnoreUnknown
+) -> Result<Metadata> {
     let mut file = File::open(input_file.as_ref())?;
-    read_metadata_from_file(&mut file)
+    read_metadata_from_file(&mut file, ignore_unknown)
 }
 
 /// Unpack a .pjz file to target directory
 /// Extracts content, writes metadata.json to parent directory of output,
 /// and returns the metadata
-pub fn unpack<P1, P2>(input_file: P1, output_dir: P2) -> Result<Metadata>
+/// 
+/// # Arguments
+/// * `input_file` - Path to the .pjz file
+/// * `output_dir` - Directory to extract contents to
+/// * `ignore_unknown` - How to handle unknown fields in metadata
+pub fn unpack<P1, P2>(
+    input_file: P1, 
+    output_dir: P2,
+    ignore_unknown: IgnoreUnknown,
+) -> Result<Metadata>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
@@ -300,7 +445,7 @@ where
 
     let mut file = File::open(input_file)?;
     // Read metadata and position cursor at start of ZStd frame
-    let metadata = read_metadata_from_file(&mut file)?;
+    let metadata = read_metadata_from_file(&mut file, ignore_unknown)?;
 
     // Decompress zstd and extract tar archive
     // File cursor is now at the start of the ZStd compressed data
@@ -324,12 +469,21 @@ where
 
 /// Extract metadata from .pjz file and save as JSON
 /// Returns the metadata and writes it to the specified JSON file
-pub fn info<P1, P2>(input_file: P1, output_json: P2) -> Result<Metadata>
+/// 
+/// # Arguments
+/// * `input_file` - Path to the .pjz file
+/// * `output_json` - Path where to save the JSON file
+/// * `ignore_unknown` - How to handle unknown fields in metadata
+pub fn info<P1, P2>(
+    input_file: P1, 
+    output_json: P2,
+    ignore_unknown: IgnoreUnknown,
+) -> Result<Metadata>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
 {
-    let metadata = read_metadata(input_file)?;
+    let metadata = read_metadata(input_file, ignore_unknown)?;
 
     // Create parent directory if needed
     let output_json = output_json.as_ref();
