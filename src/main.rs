@@ -1,7 +1,7 @@
 //! Command-line interface for projzst tool
 
 use clap::{Parser, Subcommand};
-use projzst::{info, pack, unpack, Metadata, ProjzstError, DEFAULT_ZSTD_LEVEL};
+use projzst::{info, pack, unpack, Metadata, ProjzstError, DEFAULT_ZSTD_LEVEL, IgnoreUnknown};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -67,6 +67,10 @@ enum Commands {
 
         /// Output directory path
         output: PathBuf,
+
+        /// Ignored Unknown Values or not
+        #[arg(short, long, default_value_t = String::from("1"))]
+        ignored: String,
     },
 
     /// Extract metadata info from a .pjz file to JSON
@@ -76,6 +80,10 @@ enum Commands {
 
         /// Output JSON file path
         output: PathBuf,
+
+        /// Ignored Unknown Values or not
+        #[arg(short, long, default_value_t = String::from("1"))]
+        ignored: String,
     },
 }
 
@@ -100,14 +108,14 @@ fn run() -> Result<(), ProjzstError> {
             println!("Successfully packed: {}", output.display());
         }
 
-        Commands::Unpack { input, output } => {
-            let metadata = unpack(&input, &output)?;
+        Commands::Unpack { input, output, ignored } => {
+            let metadata = unpack(&input, &output, IgnoreUnknown::from_str(ignored)?)?;
             println!("Successfully unpacked: {}", output.display());
             println!("Package: {} v{}", metadata.name.unwrap_or_default(), metadata.ver.unwrap_or_default());
         }
 
-        Commands::Info { input, output } => {
-            let metadata = info(&input, &output)?;
+        Commands::Info { input, output, ignored } => {
+            let metadata = info(&input, &output, IgnoreUnknown::from_str(ignored)?)?;
             println!("Metadata saved to: {}", output.display());
             println!("---");
             if let Some(name) = metadata.name {

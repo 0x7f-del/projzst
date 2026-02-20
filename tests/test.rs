@@ -1,6 +1,6 @@
 //! Integration tests for projzst library
 
-use projzst::{info, pack, read_metadata, unpack, Metadata, ProjzstError};
+use projzst::{info, pack, read_metadata, unpack, Metadata, ProjzstError, IgnoreUnknown};
 use serde_json;
 use std::fs;
 use tempfile::TempDir;
@@ -53,7 +53,7 @@ fn test_read_metadata_from_packed_file() {
     let original = create_test_metadata();
     pack(&source, &output, original.clone(), None::<&str>, 3).unwrap();
 
-    let read = read_metadata(&output).unwrap();
+    let read = read_metadata(&output, IgnoreUnknown::On).unwrap();
     assert_eq!(read.name, original.name);
     assert_eq!(read.auth, original.auth);
     assert_eq!(read.fmt, original.fmt);
@@ -71,7 +71,7 @@ fn test_pack_and_unpack_full_cycle() {
 
     let metadata = create_test_metadata();
     pack(&source, &archive, metadata, None::<&str>, 3).unwrap();
-    unpack(&archive, &extract).unwrap();
+    unpack(&archive, &extract, IgnoreUnknown::On).unwrap();
 
     // Verify extracted files match original
     assert!(extract.join("readme.txt").exists());
@@ -97,7 +97,7 @@ fn test_unpack_creates_metadata_json() {
 
     let metadata = create_test_metadata();
     pack(&source, &archive, metadata, None::<&str>, 3).unwrap();
-    unpack(&archive, &extract).unwrap();
+    unpack(&archive, &extract, IgnoreUnknown::On).unwrap();
 
     // metadata.json should be in parent of extract dir
     let metadata_json = temp.path().join("subdir/metadata.json");
@@ -126,7 +126,7 @@ fn test_info_extracts_metadata_to_json() {
     );
     pack(&source, &archive, metadata, None::<&str>, 3).unwrap();
 
-    let result = info(&archive, &json_output).unwrap();
+    let result = info(&archive, &json_output, IgnoreUnknown::On).unwrap();
     assert_eq!(result.name, Some("info-test".to_string()));
     assert_eq!(result.ver, Some("2.0.0".to_string()));
 
@@ -154,7 +154,7 @@ fn test_pack_with_extra_json_file() {
     let metadata = Metadata::default();
     pack(&source, &archive, metadata, Some(&extra_file), 3).unwrap();
 
-    let read = read_metadata(&archive).unwrap();
+    let read = read_metadata(&archive, IgnoreUnknown::On).unwrap();
     assert_eq!(read.extra["custom_field"], "custom_value");
     assert_eq!(read.extra["numbers"][0], 1);
     assert_eq!(read.extra["nested"]["a"], 1);
@@ -174,8 +174,8 @@ fn test_pack_with_different_compression_levels() {
     pack(&source, &output_high, metadata, None::<&str>, 19).unwrap();
 
     // Both should be valid
-    assert!(read_metadata(&output_low).is_ok());
-    assert!(read_metadata(&output_high).is_ok());
+    assert!(read_metadata(&output_low, IgnoreUnknown::On).is_ok());
+    assert!(read_metadata(&output_high, IgnoreUnknown::On).is_ok());
 
     // Higher compression should produce smaller file (usually)
     let size_low = fs::metadata(&output_low).unwrap().len();
@@ -221,7 +221,7 @@ fn test_error_invalid_pjz_file() {
     // Create invalid file (too short)
     fs::write(&invalid, &[0u8, 1, 2]).unwrap();
 
-    let result = read_metadata(&invalid);
+    let result = read_metadata(&invalid, IgnoreUnknown::On);
     assert!(result.is_err());
 }
 
@@ -242,7 +242,7 @@ fn test_metadata_with_unicode() {
 
     pack(&source, &archive, metadata.clone(), None::<&str>, 3).unwrap();
 
-    let read = read_metadata(&archive).unwrap();
+    let read = read_metadata(&archive, IgnoreUnknown::On).unwrap();
     assert_eq!(read.name, metadata.name);
     assert_eq!(read.auth, metadata.auth);
     assert_eq!(read.desc, metadata.desc);
@@ -258,7 +258,7 @@ fn test_empty_directory_pack() {
 
     let metadata = create_test_metadata();
     pack(&empty_source, &archive, metadata, None::<&str>, 3).unwrap();
-    unpack(&archive, &extract).unwrap();
+    unpack(&archive, &extract, IgnoreUnknown::On).unwrap();
 
     assert!(extract.exists());
 }

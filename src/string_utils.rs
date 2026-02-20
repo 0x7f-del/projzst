@@ -14,7 +14,7 @@
 //! # Examples
 //!
 //! ```
-//! use string_utils::IntoOpStr;
+//! use projzst::IntoOpStr;
 //!
 //! // From &str
 //! let s1 = "hello".into_op_str();
@@ -50,7 +50,7 @@
 /// # Examples
 ///
 /// ```
-/// use string_utils::IntoOpStr;
+/// use projzst::IntoOpStr;
 ///
 /// fn process_string<T: IntoOpStr>(input: T) -> Option<String> {
 ///     input.into_op_str()
@@ -97,11 +97,11 @@ impl IntoOpStr for Option<String> {
 /// # Examples
 ///
 /// ```
-/// use string_utils::_convert;
+/// use projzst::convert;
 ///
-/// let result = _convert("example");
+/// let result = convert("example");
 /// assert_eq!(result, Some("example".to_string()));
 /// ```
-pub fn _convert<T: IntoOpStr>(value: T) -> Option<String> {
+pub fn convert<T: IntoOpStr>(value: T) -> Option<String> {
     value.into_op_str()
 }
