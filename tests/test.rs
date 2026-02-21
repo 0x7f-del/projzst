@@ -1,6 +1,6 @@
 //! Integration tests for projzst library
 
-use projzst::{info, pack, read_metadata, unpack, Metadata, ProjzstError, IgnoreUnknown};
+use projzst::{info, pack, read_metadata, unpack, IgnoreUnknown, Metadata, ProjzstError};
 use serde_json;
 use std::fs;
 use tempfile::TempDir;
