@@ -1,7 +1,7 @@
 //! Command-line interface for projzst tool
 
 use clap::{Parser, Subcommand};
-use projzst::{info, pack, unpack, Metadata, ProjzstError, DEFAULT_ZSTD_LEVEL, IgnoreUnknown};
+use projzst::{info, pack, unpack, IgnoreUnknown, Metadata, ProjzstError, DEFAULT_ZSTD_LEVEL};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -108,18 +108,30 @@ fn run() -> Result<(), ProjzstError> {
             println!("Successfully packed: {}", output.display());
         }
 
-        Commands::Unpack { input, output, ignored } => {
+        Commands::Unpack {
+            input,
+            output,
+            ignored,
+        } => {
             let metadata = unpack(&input, &output, IgnoreUnknown::from_str(ignored)?)?;
             println!("Successfully unpacked: {}", output.display());
-            println!("Package: {} v{}", metadata.name.unwrap_or_default(), metadata.ver.unwrap_or_default());
+            println!(
+                "Package: {} v{}",
+                metadata.name.unwrap_or_default(),
+                metadata.ver.unwrap_or_default()
+            );
         }
 
-        Commands::Info { input, output, ignored } => {
+        Commands::Info {
+            input,
+            output,
+            ignored,
+        } => {
             let metadata = info(&input, &output, IgnoreUnknown::from_str(ignored)?)?;
             println!("Metadata saved to: {}", output.display());
             println!("---");
             if let Some(name) = metadata.name {
-            println!("Name: {}", name);
+                println!("Name: {}", name);
             }
             if let Some(author) = metadata.auth {
                 println!("Author: {}", author);
