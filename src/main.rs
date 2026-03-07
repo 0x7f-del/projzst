@@ -113,7 +113,7 @@ fn run() -> Result<(), ProjzstError> {
             output,
             ignored,
         } => {
-            let metadata = unpack(&input, &output, IgnoreUnknown::from_str(ignored)?)?;
+            let metadata = unpack(&input, &output, IgnoreUnknown::from_str_tmp(ignored)?)?;
             println!("Successfully unpacked: {}", output.display());
             println!(
                 "Package: {} v{}",
@@ -127,7 +127,7 @@ fn run() -> Result<(), ProjzstError> {
             output,
             ignored,
         } => {
-            let metadata = info(&input, &output, IgnoreUnknown::from_str(ignored)?)?;
+            let metadata = info(&input, &output, IgnoreUnknown::from_str_tmp(ignored)?)?;
             println!("Metadata saved to: {}", output.display());
             println!("---");
             if let Some(name) = metadata.name {

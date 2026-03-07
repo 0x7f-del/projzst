@@ -7,9 +7,8 @@
 //! followed by a standard ZStd compressed frame containing the tar archive.
 
 use serde::{Deserialize, Serialize};
-use serde_ignored;
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use thiserror::Error;
 
@@ -79,8 +78,10 @@ pub type Result<T> = std::result::Result<T, ProjzstError>;
 
 /// Ignore unknown fields behavior
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum IgnoreUnknown {
     /// Silently ignore unknown fields (default)
+    #[default]
     On,
     /// Error on unknown fields
     Off,
@@ -90,7 +91,7 @@ pub enum IgnoreUnknown {
 
 impl IgnoreUnknown {
     /// Create from string parameter
-    pub fn from_str<I: IntoOpStr>(s: I) -> Result<Self> {
+    pub fn from_str_tmp<I: IntoOpStr>(s: I) -> Result<Self> {
         let a = s.into_op_str().unwrap_or_default();
         let s: &str = a.as_ref();
         match s.to_lowercase().as_str() {
@@ -102,11 +103,6 @@ impl IgnoreUnknown {
     }
 }
 
-impl Default for IgnoreUnknown {
-    fn default() -> Self {
-        IgnoreUnknown::On
-    }
-}
 
 /// Metadata structure stored in .pjz file header
 /// All fields are optional except extra which defaults to empty object
