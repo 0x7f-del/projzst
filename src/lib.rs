@@ -6,15 +6,24 @@
 //! The metadata is stored in one or more ZStd skippable frames at the beginning of the file,
 //! followed by a standard ZStd compressed frame containing the tar archive.
 
-use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use thiserror::Error;
 
 mod string_utils;
 pub use crate::string_utils::convert;
 pub use crate::string_utils::IntoOpStr;
+
+mod builder;
+pub use crate::builder::Packer;
+
+mod errors;
+pub use crate::errors::ProjzstError;
+pub use crate::errors::Result;
+
+mod metadata;
+pub use crate::metadata::IgnoreUnknown;
+pub use crate::metadata::Metadata;
 
 /// Default zstd compression level for pack operation
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
@@ -28,195 +37,6 @@ const SKIPPABLE_FRAME_MAGIC_MIN: u32 = 0x184D2A50;
 const SKIPPABLE_FRAME_MAGIC_MAX: u32 = 0x184D2A5F;
 /// Fixed magic number used for metadata frames (any value in the range works)
 const METADATA_FRAME_MAGIC: u32 = 0x184D2A50;
-
-/// Custom error types for projzst operations
-#[derive(Error, Debug)]
-pub enum ProjzstError {
-    /// IO operation failed (file read/write, directory creation, etc.)
-    #[error("IO operation failed: {0}")]
-    Io(#[from] std::io::Error),
-
-    /// JSON serialization/deserialization failed
-    #[error("JSON parsing failed: {0}")]
-    Json(#[from] serde_json::Error),
-
-    /// MessagePack encoding failed during metadata serialization
-    #[error("MessagePack encoding failed: {0}")]
-    MsgPackEncode(#[from] rmp_serde::encode::Error),
-
-    /// MessagePack decoding failed during metadata deserialization
-    #[error("MessagePack decoding failed: {0}")]
-    MsgPackDecode(#[from] rmp_serde::decode::Error),
-
-    /// Metadata size is invalid (zero or exceeds MAX_METADATA_SIZE)
-    #[error("Invalid metadata length: got {0} bytes")]
-    InvalidMetadataLength(usize),
-
-    /// Extra metadata file specified but not found
-    #[error("Extra metadata file not found: {0}")]
-    ExtraFileNotFound(String),
-
-    /// Source directory to pack does not exist
-    #[error("Source directory does not exist: {0}")]
-    SourceNotFound(String),
-
-    /// File header is invalid (missing magic numbers, corrupt format, etc.)
-    #[error("Failed to read file header or invalid file format")]
-    InvalidFileHeader,
-
-    /// Unknown fields detected in metadata when ignore_unknown is false
-    #[error("Unknown fields detected in metadata: {0}")]
-    UnknownFields(String),
-
-    /// Invalid ignore_unknown parameter value
-    #[error("Invalid ignore_unknown parameter: must be 'on', 'off', or 'export'")]
-    InvalidIgnoreUnknownParam,
-}
-
-/// Result type alias for projzst operations
-pub type Result<T> = std::result::Result<T, ProjzstError>;
-
-/// Ignore unknown fields behavior
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum IgnoreUnknown {
-    /// Silently ignore unknown fields (default)
-    #[default]
-    On,
-    /// Error on unknown fields
-    Off,
-    /// Collect unknown fields and export them to extra.ignored
-    Export,
-}
-
-impl IgnoreUnknown {
-    /// Create from string parameter
-    pub fn from_str_tmp<I: IntoOpStr>(s: I) -> Result<Self> {
-        let a = s.into_op_str().unwrap_or_default();
-        let s: &str = a.as_ref();
-        match s.to_lowercase().as_str() {
-            "on" | "true" | "yes" | "1" => Ok(IgnoreUnknown::On),
-            "off" | "false" | "no" | "0" => Ok(IgnoreUnknown::Off),
-            "export" | "extra" => Ok(IgnoreUnknown::Export),
-            _ => Err(ProjzstError::InvalidIgnoreUnknownParam),
-        }
-    }
-}
-
-/// Metadata structure stored in .pjz file header
-/// All fields are optional except extra which defaults to empty object
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Metadata {
-    /// Package name
-    #[serde(default)]
-    pub name: Option<String>,
-
-    /// Author name
-    #[serde(default)]
-    pub auth: Option<String>,
-
-    /// Package format identifier
-    #[serde(default)]
-    pub fmt: Option<String>,
-
-    /// Format edition
-    #[serde(default)]
-    pub ed: Option<String>,
-
-    /// Project version
-    #[serde(default)]
-    pub ver: Option<String>,
-
-    /// Package description
-    #[serde(default)]
-    pub desc: Option<String>,
-
-    /// Extra metadata (arbitrary JSON structure)
-    /// When ignore_unknown = Export, unknown fields are stored in extra.ignored
-    #[serde(default)]
-    pub extra: serde_json::Value,
-}
-
-impl Default for Metadata {
-    fn default() -> Self {
-        Self {
-            name: None,
-            auth: None,
-            fmt: None,
-            ed: None,
-            ver: None,
-            desc: None,
-            extra: serde_json::Value::Object(serde_json::Map::new()),
-        }
-    }
-}
-
-impl Metadata {
-    /// Create new Metadata with specified fields
-    /// All parameters accept types that can be converted to Option<String>
-    pub fn new<I1, I2, I3, I4, I5, I6>(
-        name: I1,
-        auth: I2,
-        fmt: I3,
-        ed: I4,
-        ver: I5,
-        desc: I6,
-    ) -> Self
-    where
-        I1: IntoOpStr,
-        I2: IntoOpStr,
-        I3: IntoOpStr,
-        I4: IntoOpStr,
-        I5: IntoOpStr,
-        I6: IntoOpStr,
-    {
-        Self {
-            name: name.into_op_str(),
-            auth: auth.into_op_str(),
-            fmt: fmt.into_op_str(),
-            ed: ed.into_op_str(),
-            ver: ver.into_op_str(),
-            desc: desc.into_op_str(),
-            extra: serde_json::Value::Object(serde_json::Map::new()),
-        }
-    }
-
-    /// Set extra metadata from JSON value
-    /// Consumes self and returns updated Metadata
-    pub fn with_extra(mut self, extra: serde_json::Value) -> Self {
-        self.extra = extra;
-        self
-    }
-
-    /// Merge unknown fields into extra.ignored
-    /// This is used when ignore_unknown = Export
-    pub fn merge_unknown_fields(&mut self, unknown: serde_json::Value) {
-        if let serde_json::Value::Object(unknown_map) = unknown {
-            // Ensure extra is an object
-            if !self.extra.is_object() {
-                self.extra = serde_json::Value::Object(serde_json::Map::new());
-            }
-
-            if let serde_json::Value::Object(extra_map) = &mut self.extra {
-                // Create or get the "ignored" field
-                let ignored = extra_map
-                    .entry("ignored".to_string())
-                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-
-                // Ensure ignored is an object
-                if !ignored.is_object() {
-                    *ignored = serde_json::Value::Object(serde_json::Map::new());
-                }
-
-                // Merge unknown fields into ignored
-                if let serde_json::Value::Object(ignored_map) = ignored {
-                    for (key, value) in unknown_map {
-                        ignored_map.insert(key, value);
-                    }
-                }
-            }
-        }
-    }
-}
 
 /// Pack a directory into a .pjz file
 /// Creates archive with MessagePack metadata stored in ZStd skippable frames,
