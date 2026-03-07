@@ -77,8 +77,7 @@ pub enum ProjzstError {
 pub type Result<T> = std::result::Result<T, ProjzstError>;
 
 /// Ignore unknown fields behavior
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum IgnoreUnknown {
     /// Silently ignore unknown fields (default)
     #[default]
@@ -102,7 +101,6 @@ impl IgnoreUnknown {
         }
     }
 }
-
 
 /// Metadata structure stored in .pjz file header
 /// All fields are optional except extra which defaults to empty object
