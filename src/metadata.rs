@@ -29,10 +29,104 @@ impl IgnoreUnknown {
     }
 }
 
+pub trait Metadata {
+    fn name(self, name: Option<String>) -> Self;
+    fn auth(self, auth: Option<String>) -> Self;
+    fn fmt(self, fmt: Option<String>) -> Self;
+    fn ed(self, ed: Option<String>) -> Self;
+    fn ver(self, ver: Option<String>) -> Self;
+    fn desc(self, desc: Option<String>) -> Self;
+}
+
+/// New Structure about basic metadata structure
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BasicMetadata {
+    /// Package name
+    #[serde(default)]
+    pub name: Option<String>,
+
+    /// Author name
+    #[serde(default)]
+    pub auth: Option<String>,
+
+    /// Package format identifier
+    #[serde(default)]
+    pub fmt: Option<String>,
+
+    /// Format edition
+    #[serde(default)]
+    pub ed: Option<String>,
+
+    /// Project version
+    #[serde(default)]
+    pub ver: Option<String>,
+
+    /// Package description
+    #[serde(default)]
+    pub desc: Option<String>,
+}
+
+impl Metadata for BasicMetadata {
+    fn auth(mut self, auth: Option<String>) -> Self {
+        self.auth = auth;
+        self
+    }
+    fn desc(mut self, desc: Option<String>) -> Self {
+        self.desc = desc;
+        self
+    }
+    fn ed(mut self, ed: Option<String>) -> Self {
+        self.ed = ed;
+        self
+    }
+    fn fmt(mut self, fmt: Option<String>) -> Self {
+        self.fmt = fmt;
+        self
+    }
+    fn name(mut self, name: Option<String>) -> Self {
+        self.name = name;
+        self
+    }
+    fn ver(mut self, ver: Option<String>) -> Self {
+        self.ver = ver;
+        self
+    }
+}
+
+impl BasicMetadata {
+    /// Create new Metadata with specified fields
+    /// All parameters accept types that can be converted to Option<String>
+    pub fn new<I1, I2, I3, I4, I5, I6>(
+        name: I1,
+        auth: I2,
+        fmt: I3,
+        ed: I4,
+        ver: I5,
+        desc: I6,
+    ) -> Self
+    where
+        I1: IntoOpStr,
+        I2: IntoOpStr,
+        I3: IntoOpStr,
+        I4: IntoOpStr,
+        I5: IntoOpStr,
+        I6: IntoOpStr,
+    {
+        Self {
+            name: name.into_op_str(),
+            auth: auth.into_op_str(),
+            fmt: fmt.into_op_str(),
+            ed: ed.into_op_str(),
+            ver: ver.into_op_str(),
+            desc: desc.into_op_str(),
+        }
+    }
+}
+
 /// Metadata structure stored in .pjz file header
 /// All fields are optional except extra which defaults to empty object
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Metadata {
+pub struct FullMetadata {
     /// Package name
     #[serde(default)]
     pub name: Option<String>,
@@ -63,7 +157,7 @@ pub struct Metadata {
     pub extra: serde_json::Value,
 }
 
-impl Default for Metadata {
+impl Default for FullMetadata {
     fn default() -> Self {
         Self {
             name: None,
@@ -77,7 +171,33 @@ impl Default for Metadata {
     }
 }
 
-impl Metadata {
+impl Metadata for FullMetadata {
+    fn auth(mut self, auth: Option<String>) -> Self {
+        self.auth = auth;
+        self
+    }
+    fn desc(mut self, desc: Option<String>) -> Self {
+        self.desc = desc;
+        self
+    }
+    fn ed(mut self, ed: Option<String>) -> Self {
+        self.ed = ed;
+        self
+    }
+    fn fmt(mut self, fmt: Option<String>) -> Self {
+        self.fmt = fmt;
+        self
+    }
+    fn name(mut self, name: Option<String>) -> Self {
+        self.name = name;
+        self
+    }
+    fn ver(mut self, ver: Option<String>) -> Self {
+        self.ver = ver;
+        self
+    }
+}
+impl FullMetadata {
     /// Create new Metadata with specified fields
     /// All parameters accept types that can be converted to Option<String>
     pub fn new<I1, I2, I3, I4, I5, I6>(
