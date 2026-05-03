@@ -5,6 +5,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
+use zstd::stream::Encoder;
+use zstd::zstd_safe::CParameter;
+
 use crate::errors::{ProjzstError, Result};
 use crate::metadata::{FullMetadata, IgnoreUnknown};
 
@@ -80,17 +83,19 @@ where
         self
     }
 
-    // pack something...
-    fn pack(mut self) -> Result<()> {
+    /// Pack a directory into a .pjz file
+    /// Creates archive with MessagePack metadata stored in ZStd skippable frames,
+    /// followed by tar.zst compressed content
+    pub fn pack(mut self) -> Result<()> {
         //TODO: Check pack
 
-        let source_dir = self.input_file;
+        let input_file = self.input_file;
         let output_file = &self.output_file;
 
         // Validate source directory exists
-        if !source_dir.exists() {
+        if !input_file.exists() {
             return Err(ProjzstError::SourceNotFound(
-                source_dir.display().to_string(),
+                input_file.display().to_string(),
             ));
         }
 
@@ -131,7 +136,7 @@ where
         {
             let mut tar_builder = tar::Builder::new(&mut zst_encoder);
             // Add all files from source directory
-            tar_builder.append_dir_all(".", source_dir)?;
+            tar_builder.append_dir_all(".", input_file)?;
         }
         // Finalize zstd stream
         zst_encoder.finish()?;
@@ -199,12 +204,14 @@ where
     output.write_all(&metadata_bytes)?;
 
     // Append tar.zst compressed data as a standard ZStd frame
-    let mut zst_encoder = zstd::stream::Encoder::new(&mut output, compression_level)?;
+    let mut zst_encoder = Encoder::new(&mut output, compression_level)?;
     {
         let mut tar_builder = tar::Builder::new(&mut zst_encoder);
         // Add all files from source directory
         tar_builder.append_dir_all(".", source_dir)?;
     }
+    //TODO: Make `multithread` optional
+    zst_encoder.set_parameter(CParameter::NbWorkers(num_cpus::get() as u32))?;
     // Finalize zstd stream
     zst_encoder.finish()?;
 
@@ -212,7 +219,7 @@ where
 }
 
 pub fn pack<P1, P2, P3>(
-    source_dir: P1,
+    input_file: P1,
     output_file: P2,
     metadata: FullMetadata,
     extra_file: Option<P3>,
@@ -223,7 +230,7 @@ where
     P2: AsRef<Path>,
     P3: AsRef<Path>,
 {
-    let packer: Packer<P1, P2, P3> = Packer::new(source_dir, output_file)
+    let packer: Packer<P1, P2, P3> = Packer::new(input_file, output_file)
         .add_metadata(metadata)
         .compression_level(compression_level)
         .extra_file(extra_file);

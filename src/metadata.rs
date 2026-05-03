@@ -36,6 +36,7 @@ pub trait Metadata {
     fn ed(self, ed: Option<String>) -> Self;
     fn ver(self, ver: Option<String>) -> Self;
     fn desc(self, desc: Option<String>) -> Self;
+    fn basic(self) -> BasicMetadata;
 }
 
 /// New Structure about basic metadata structure
@@ -89,6 +90,9 @@ impl Metadata for BasicMetadata {
     }
     fn ver(mut self, ver: Option<String>) -> Self {
         self.ver = ver;
+        self
+    }
+    fn basic(self) -> BasicMetadata {
         self
     }
 }
@@ -196,6 +200,15 @@ impl Metadata for FullMetadata {
         self.ver = ver;
         self
     }
+    fn basic(self) -> BasicMetadata {
+        BasicMetadata::default()
+            .name(self.name)
+            .auth(self.auth)
+            .desc(self.desc)
+            .ed(self.ed)
+            .fmt(self.fmt)
+            .ver(self.ver)
+    }
 }
 impl FullMetadata {
     /// Create new Metadata with specified fields
@@ -229,7 +242,7 @@ impl FullMetadata {
 
     /// Set extra metadata from JSON value
     /// Consumes self and returns updated Metadata
-    pub fn with_extra(mut self, extra: serde_json::Value) -> Self {
+    pub fn extra(mut self, extra: serde_json::Value) -> Self {
         self.extra = extra;
         self
     }
