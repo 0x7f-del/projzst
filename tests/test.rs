@@ -1,6 +1,6 @@
 //! Integration tests for projzst library
 
-use projzst::{info, pack, read_metadata, unpack, IgnoreUnknown, Metadata, ProjzstError};
+use projzst::{info, pack, read_metadata, unpack, FullMetadata, IgnoreUnknown, ProjzstError};
 use serde_json;
 use std::fs;
 use tempfile::TempDir;
@@ -20,8 +20,8 @@ fn create_test_directory(base: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// Helper to create test metadata
-fn create_test_metadata() -> Metadata {
-    Metadata::new(
+fn create_test_metadata() -> FullMetadata {
+    FullMetadata::new(
         "test-project",
         "Test Author",
         "test-format",
@@ -116,7 +116,7 @@ fn test_info_extracts_metadata_to_json() {
     let archive = temp.path().join("test.pjz");
     let json_output = temp.path().join("info/metadata.json");
 
-    let metadata = Metadata::new(
+    let metadata = FullMetadata::new(
         "info-test",
         Option::<String>::None,
         Option::<String>::None,
@@ -151,7 +151,7 @@ fn test_pack_with_extra_json_file() {
     }"#;
     fs::write(&extra_file, extra_content).unwrap();
 
-    let metadata = Metadata::default();
+    let metadata = FullMetadata::default();
     pack(&source, &archive, metadata, Some(&extra_file), 3).unwrap();
 
     let read = read_metadata(&archive, IgnoreUnknown::On).unwrap();
@@ -192,7 +192,13 @@ fn test_error_source_not_found() {
     let nonexistent = temp.path().join("does_not_exist");
     let output = temp.path().join("output.pjz");
 
-    let result = pack(&nonexistent, &output, Metadata::default(), None::<&str>, 3);
+    let result = pack(
+        &nonexistent,
+        &output,
+        FullMetadata::default(),
+        None::<&str>,
+        3,
+    );
     assert!(matches!(result, Err(ProjzstError::SourceNotFound(_))));
 }
 
@@ -206,7 +212,7 @@ fn test_error_extra_file_not_found() {
     let result = pack(
         &source,
         &output,
-        Metadata::default(),
+        FullMetadata::default(),
         Some(&nonexistent_extra),
         3,
     );
@@ -231,7 +237,7 @@ fn test_metadata_with_unicode() {
     let source = create_test_directory(temp.path());
     let archive = temp.path().join("unicode.pjz");
 
-    let metadata = Metadata::new(
+    let metadata = FullMetadata::new(
         "项目名称",
         "作者名 🚀",
         "フォーマット",

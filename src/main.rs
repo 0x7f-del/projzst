@@ -1,7 +1,7 @@
 //! Command-line interface for projzst tool
 
 use clap::{Parser, Subcommand};
-use projzst::{info, pack, unpack, IgnoreUnknown, Metadata, ProjzstError, DEFAULT_ZSTD_LEVEL};
+use projzst::{info, pack, unpack, FullMetadata, IgnoreUnknown, ProjzstError, DEFAULT_ZSTD_LEVEL};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -103,7 +103,7 @@ fn run() -> Result<(), ProjzstError> {
             level,
             output,
         } => {
-            let metadata = Metadata::new(name, auth, fmt, ed, ver, desc);
+            let metadata = FullMetadata::new(name, auth, fmt, ed, ver, desc);
             pack(&input, &output, metadata, extra.as_ref(), level)?;
             println!("Successfully packed: {}", output.display());
         }

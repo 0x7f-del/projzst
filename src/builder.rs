@@ -2,10 +2,14 @@
 
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
+
+use zstd::stream::Encoder;
+use zstd::zstd_safe::CParameter;
 
 use crate::errors::{ProjzstError, Result};
-use crate::metadata::{IgnoreUnknown, Metadata};
+use crate::metadata::{FullMetadata, IgnoreUnknown};
 
 /// Maximum allowed metadata size (10 MB) to prevent malicious files
 const MAX_METADATA_SIZE: usize = 10 * 1024 * 1024;
@@ -17,19 +21,137 @@ const SKIPPABLE_FRAME_MAGIC_MAX: u32 = 0x184D2A5F;
 /// Fixed magic number used for metadata frames (any value in the range works)
 const METADATA_FRAME_MAGIC: u32 = 0x184D2A50;
 
+/// Default zstd compression level for pack operation
+pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
+
+/// the Pack Builder for pack operations.
+/// the Pack Builder for pack operations.
+#[derive(Debug, Clone)]
+pub struct Packer<P1, P2, P3>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+    P3: AsRef<Path>,
+{
+    input_file: PathBuf,
+    output_file: PathBuf,
+    metadata: FullMetadata,
+    extra_file: Option<PathBuf>,
+    compression_level: i32,
+    _phantom: PhantomData<(P1, P2, P3)>,
+}
+
+impl<P1, P2, P3> Packer<P1, P2, P3>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+    P3: AsRef<Path>,
+{
+    pub fn new(input_file: P1, output_file: P2) -> Self {
+        Self {
+            input_file: input_file.as_ref().to_path_buf(),
+            output_file: output_file.as_ref().to_path_buf(),
+            metadata: FullMetadata::default(),
+            extra_file: None,
+            compression_level: DEFAULT_ZSTD_LEVEL,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn add_metadata(mut self, metadata: FullMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
+
+    pub fn input_file(mut self, input_file: P1) -> Self {
+        self.input_file = input_file.as_ref().to_path_buf();
+        self
+    }
+
+    pub fn output_file(mut self, output_file: P2) -> Self {
+        self.output_file = output_file.as_ref().to_path_buf();
+        self
+    }
+
+    pub fn compression_level(mut self, compression_level: i32) -> Self {
+        self.compression_level = compression_level;
+        self
+    }
+
+    pub fn extra_file(mut self, extra_file: Option<P3>) -> Self {
+        self.extra_file = extra_file.map(|p| p.as_ref().to_path_buf());
+        self
+    }
+
+    /// Pack a directory into a .pjz file
+    /// Creates archive with MessagePack metadata stored in ZStd skippable frames,
+    /// followed by tar.zst compressed content
+    pub fn pack(mut self) -> Result<()> {
+        //TODO: Check pack
+
+        let input_file = self.input_file;
+        let output_file = &self.output_file;
+
+        // Validate source directory exists
+        if !input_file.exists() {
+            return Err(ProjzstError::SourceNotFound(
+                input_file.display().to_string(),
+            ));
+        }
+
+        // Load extra metadata from JSON file if provided
+        if let Some(extra_path) = self.extra_file {
+            let extra_content = fs::read_to_string(&extra_path)
+                .map_err(|_| ProjzstError::ExtraFileNotFound(extra_path.display().to_string()))?;
+            self.metadata.extra = serde_json::from_str(&extra_content)?;
+        }
+
+        // Serialize metadata to MessagePack bytes
+        let metadata_bytes = rmp_serde::to_vec(&self.metadata)?;
+        let metadata_len = metadata_bytes.len();
+
+        // Validate metadata size
+        if metadata_len > MAX_METADATA_SIZE {
+            return Err(ProjzstError::InvalidMetadataLength(metadata_len));
+        }
+
+        // Create parent directories if needed
+        if let Some(parent) = output_file.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Write final .pjz file: [skippable frame][tar.zst data]
+        let mut output = File::create(self.output_file)?;
+
+        // Write skippable frame header (magic + size)
+        output.write_all(&METADATA_FRAME_MAGIC.to_le_bytes())?;
+        output.write_all(&(metadata_len as u32).to_le_bytes())?;
+        // Write metadata bytes as frame data
+        output.write_all(&metadata_bytes)?;
+
+        // Append tar.zst compressed data as a standard ZStd frame
+        let mut zst_encoder = zstd::stream::Encoder::new(&mut output, self.compression_level)?;
+        {
+            let mut tar_builder = tar::Builder::new(&mut zst_encoder);
+            // Add all files from source directory
+            tar_builder.append_dir_all(".", input_file)?;
+        }
+        // Finalize zstd stream
+        zst_encoder.finish()?;
+
+        Ok(())
+    }
+}
+
 /// Pack a directory into a .pjz file
 /// Creates archive with MessagePack metadata stored in ZStd skippable frames,
 /// followed by tar.zst compressed content
-///
-///
-/// the Pack Builder for pack operations.
-#[derive(Debug, Clone)]
-pub struct Packer {}
-
-pub fn pack<P1, P2, P3>(
+pub fn _pack<P1, P2, P3>(
     source_dir: P1,
     output_file: P2,
-    mut metadata: Metadata,
+    mut metadata: FullMetadata,
     extra_file: Option<P3>,
     compression_level: i32,
 ) -> Result<()>
@@ -82,21 +204,57 @@ where
     output.write_all(&metadata_bytes)?;
 
     // Append tar.zst compressed data as a standard ZStd frame
-    let mut zst_encoder = zstd::stream::Encoder::new(&mut output, compression_level)?;
+    let mut zst_encoder = Encoder::new(&mut output, compression_level)?;
     {
         let mut tar_builder = tar::Builder::new(&mut zst_encoder);
         // Add all files from source directory
         tar_builder.append_dir_all(".", source_dir)?;
     }
+    //TODO: Make `multithread` optional
+    zst_encoder.set_parameter(CParameter::NbWorkers(num_cpus::get() as u32))?;
     // Finalize zstd stream
     zst_encoder.finish()?;
 
     Ok(())
 }
 
+pub fn pack<P1, P2, P3>(
+    input_file: P1,
+    output_file: P2,
+    metadata: FullMetadata,
+    extra_file: Option<P3>,
+    compression_level: i32,
+) -> Result<()>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+    P3: AsRef<Path>,
+{
+    let packer: Packer<P1, P2, P3> = Packer::new(input_file, output_file)
+        .add_metadata(metadata)
+        .compression_level(compression_level)
+        .extra_file(extra_file);
+    packer.pack()
+}
+
+pub struct _Unpacker<P1, P2, P3>
+where
+    P1: AsRef<Path>,
+    P2: AsRef<Path>,
+    P3: AsRef<Path>,
+{
+    input_file: P1,
+    output_file: P2,
+
+    metadata: FullMetadata,
+    extra_file: Option<P3>,
+
+    ignore_unknown: IgnoreUnknown,
+}
+
 /// Internal helper: read metadata from a file with ignore_unknown parameter
 /// Returns metadata and leaves file cursor at the start of the first ZStd frame
-fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Result<Metadata> {
+fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Result<FullMetadata> {
     let mut metadata_bytes = Vec::new();
 
     loop {
@@ -150,7 +308,7 @@ fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Re
     match ignore_unknown {
         IgnoreUnknown::On => {
             // Silently ignore unknown fields
-            let metadata: Metadata = rmp_serde::from_slice(&metadata_bytes)?;
+            let metadata: FullMetadata = rmp_serde::from_slice(&metadata_bytes)?;
             Ok(metadata)
         }
         IgnoreUnknown::Off => {
@@ -158,7 +316,7 @@ fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Re
             let mut deserializer = rmp_serde::Deserializer::new(&metadata_bytes[..]);
             let mut unknown_fields = Vec::new();
 
-            let metadata: Metadata = serde_ignored::deserialize(&mut deserializer, |path| {
+            let metadata: FullMetadata = serde_ignored::deserialize(&mut deserializer, |path| {
                 unknown_fields.push(path.to_string());
             })?;
 
@@ -190,7 +348,7 @@ fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Re
 
                 // Deserialize known fields into Metadata
                 let known_value = serde_json::Value::Object(known_map);
-                let mut metadata: Metadata = serde_json::from_value(known_value)?;
+                let mut metadata: FullMetadata = serde_json::from_value(known_value)?;
 
                 // Merge unknown fields into extra.ignored
                 if !unknown_map.is_empty() {
@@ -215,7 +373,7 @@ fn read_metadata_from_file(file: &mut File, ignore_unknown: IgnoreUnknown) -> Re
 pub fn read_metadata<P: AsRef<Path>>(
     input_file: P,
     ignore_unknown: IgnoreUnknown,
-) -> Result<Metadata> {
+) -> Result<FullMetadata> {
     let mut file = File::open(input_file.as_ref())?;
     read_metadata_from_file(&mut file, ignore_unknown)
 }
@@ -232,7 +390,7 @@ pub fn unpack<P1, P2>(
     input_file: P1,
     output_dir: P2,
     ignore_unknown: IgnoreUnknown,
-) -> Result<Metadata>
+) -> Result<FullMetadata>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
@@ -275,7 +433,7 @@ pub fn info<P1, P2>(
     input_file: P1,
     output_json: P2,
     ignore_unknown: IgnoreUnknown,
-) -> Result<Metadata>
+) -> Result<FullMetadata>
 where
     P1: AsRef<Path>,
     P2: AsRef<Path>,
