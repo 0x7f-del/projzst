@@ -2,7 +2,8 @@
 
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 
 use crate::errors::{ProjzstError, Result};
 use crate::metadata::{FullMetadata, IgnoreUnknown};
@@ -21,7 +22,7 @@ const METADATA_FRAME_MAGIC: u32 = 0x184D2A50;
 pub const DEFAULT_ZSTD_LEVEL: i32 = 6;
 
 /// the Pack Builder for pack operations.
-// TODO: Packer
+/// the Pack Builder for pack operations.
 #[derive(Debug, Clone)]
 pub struct Packer<P1, P2, P3>
 where
@@ -29,15 +30,14 @@ where
     P2: AsRef<Path>,
     P3: AsRef<Path>,
 {
-    input_file: P1,
-    output_file: P2,
-
+    input_file: PathBuf,
+    output_file: PathBuf,
     metadata: FullMetadata,
-    extra_file: Option<P3>,
+    extra_file: Option<PathBuf>,
     compression_level: i32,
+    _phantom: PhantomData<(P1, P2, P3)>,
 }
 
-///TODO: the realization of Packer
 impl<P1, P2, P3> Packer<P1, P2, P3>
 where
     P1: AsRef<Path>,
@@ -46,31 +46,37 @@ where
 {
     pub fn new(input_file: P1, output_file: P2) -> Self {
         Self {
-            input_file,
-            output_file,
+            input_file: input_file.as_ref().to_path_buf(),
+            output_file: output_file.as_ref().to_path_buf(),
             metadata: FullMetadata::default(),
             extra_file: None,
             compression_level: DEFAULT_ZSTD_LEVEL,
+            _phantom: PhantomData,
         }
     }
+
     pub fn add_metadata(mut self, metadata: FullMetadata) -> Self {
         self.metadata = metadata;
         self
     }
+
     pub fn input_file(mut self, input_file: P1) -> Self {
-        self.input_file = input_file;
+        self.input_file = input_file.as_ref().to_path_buf();
         self
     }
+
     pub fn output_file(mut self, output_file: P2) -> Self {
-        self.output_file = output_file;
+        self.output_file = output_file.as_ref().to_path_buf();
         self
     }
+
     pub fn compression_level(mut self, compression_level: i32) -> Self {
         self.compression_level = compression_level;
         self
     }
+
     pub fn extra_file(mut self, extra_file: Option<P3>) -> Self {
-        self.extra_file = extra_file;
+        self.extra_file = extra_file.map(|p| p.as_ref().to_path_buf());
         self
     }
 
@@ -78,8 +84,8 @@ where
     fn pack(mut self) -> Result<()> {
         //TODO: Check pack
 
-        let source_dir = self.input_file.as_ref();
-        let output_file = self.output_file.as_ref();
+        let source_dir = self.input_file;
+        let output_file = &self.output_file;
 
         // Validate source directory exists
         if !source_dir.exists() {
@@ -90,8 +96,7 @@ where
 
         // Load extra metadata from JSON file if provided
         if let Some(extra_path) = self.extra_file {
-            let extra_path = extra_path.as_ref();
-            let extra_content = fs::read_to_string(extra_path)
+            let extra_content = fs::read_to_string(&extra_path)
                 .map_err(|_| ProjzstError::ExtraFileNotFound(extra_path.display().to_string()))?;
             self.metadata.extra = serde_json::from_str(&extra_content)?;
         }
